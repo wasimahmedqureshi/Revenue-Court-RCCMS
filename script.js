@@ -1,58 +1,814 @@
-// RCCMS script.js (Full functionality + Dhara/Year wise reports, disposal date range)
-let registrations = JSON.parse(localStorage.getItem('rccms_registrations')) || (window.PRELOADED_REGISTRATIONS || []);
-let disposals = JSON.parse(localStorage.getItem('rccms_disposals')) || (window.PRELOADED_DISPOSALS || []);
+// RCCMS - Revenue Court Computerized Management System
+// Main JavaScript File
+
+// ===================== DATA STORE =====================
+let registrations = JSON.parse(localStorage.getItem('rccms_registrations')) || PRELOADED_REGISTRATIONS || [];
+let disposals = JSON.parse(localStorage.getItem('rccms_disposals')) || PRELOADED_DISPOSALS || [];
 let currentEditIndex = -1;
-document.addEventListener('DOMContentLoaded',()=>{
-    document.getElementById('currentDate').innerHTML = new Date().toLocaleDateString('en-IN',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+// ===================== INITIALIZATION =====================
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('currentDate').textContent = new Date().toLocaleDateString('en-IN', { 
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+    });
     document.getElementById('regDate').valueAsDate = new Date();
     document.getElementById('dispDate').valueAsDate = new Date();
-    let today = new Date();
-    document.getElementById('mprFromDate').valueAsDate = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    document.getElementById('mprFromDate').valueAsDate = firstDay;
     document.getElementById('mprToDate').valueAsDate = today;
-    document.getElementById('dispReportFrom').valueAsDate = new Date(today.getFullYear(), today.getMonth()-1, 1);
-    document.getElementById('dispReportTo').valueAsDate = today;
+
+    // Show loaded data counts
+    updateLoadedCounts();
+
     refreshAll();
 });
-function saveData(){localStorage.setItem('rccms_registrations',JSON.stringify(registrations));localStorage.setItem('rccms_disposals',JSON.stringify(disposals));}
-function showToast(msg,type='success'){let t=document.createElement('div');t.className=`toast ${type}`;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3000);}
-function showTab(tabId){document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));document.getElementById(tabId).classList.add('active');event.target.classList.add('active');refreshAll();if(tabId==='reports'){generateDharaWiseReport();generateYearWiseReport();}}
-function getPendingFiles(){return registrations.filter(r=>!disposals.find(d=>d.rrcms===r.rrcms));}
-function formatDate(d){if(!d)return'-';let dd=new Date(d);return isNaN(dd)?d:dd.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});}
-function getAgeCategory(days){if(days<=180)return{label:'Upto 6 Months',class:'badge-green'};if(days<=365)return{label:'6-12 Months',class:'badge-yellow'};if(days<=730)return{label:'1-2 Years',class:'badge-orange'};if(days<=1095)return{label:'2-3 Years',class:'badge-orange'};if(days<=1825)return{label:'3-5 Years',class:'badge-red'};if(days<=3650)return{label:'5-10 Years',class:'badge-red'};if(days<=7300)return{label:'10-20 Years',class:'badge-purple'};if(days<=10950)return{label:'20-30 Years',class:'badge-purple'};if(days<=14600)return{label:'30-40 Years',class:'badge-gray'};return{label:'More Than 40 Years',class:'badge-gray'};}
-function updateLoadedCounts(){document.getElementById('loadedReg').textContent=registrations.length;document.getElementById('loadedDisp').textContent=disposals.length;document.getElementById('loadedPending').textContent=getPendingFiles().length;}
-function refreshAll(){updateDashboard();renderRegistrations();updateDisposalDropdown();renderDisposals();updateFilters();renderPending();generateDharaWiseReport();generateYearWiseReport();}
-function registerFile(){let rrcms=document.getElementById('regRRCMS').value.trim(),date=document.getElementById('regDate').value,stream=document.getElementById('regStream').value.trim(),year=document.getElementById('regYear').value,applicant=document.getElementById('regApplicant').value.trim(),village=document.getElementById('regVillage').value.trim();if(!rrcms||!date||!stream||!year)return showToast('Fill all required fields!','error');if(registrations.find(r=>r.rrcms===rrcms))return showToast('RRCMS exists!','error');registrations.push({sno:registrations.length+1,rrcms,regDate:date,stream,regYear:parseInt(year),applicant,village});saveData();showToast('Registered!');document.getElementById('regRRCMS').value='';document.getElementById('regStream').value='';document.getElementById('regYear').value='';document.getElementById('regApplicant').value='';document.getElementById('regVillage').value='';refreshAll();}
-function renderRegistrations(){let tbody=document.getElementById('registrationTableBody'),search=document.getElementById('regSearch')?.value.toLowerCase()||'',filtered=registrations.filter(r=>search?r.rrcms.toLowerCase().includes(search)||r.stream.toLowerCase().includes(search)||(r.applicant||'').toLowerCase().includes(search):true);filtered.sort((a,b)=>new Date(b.regDate)-new Date(a.regDate));tbody.innerHTML=filtered.map((r,i)=>{let d=disposals.find(dd=>dd.rrcms===r.rrcms);return`<tr><td>${i+1}</td><td><strong>${r.rrcms}</strong></td><td>${formatDate(r.regDate)}</td><td><span class="stream-tag">${r.stream}</span></td><td>${r.regYear}</td><td>${r.applicant||'-'}</td><td>${r.village||'-'}</td><td>${d?'<span class="badge badge-green">Disposed</span>':'<span class="badge badge-orange">Pending</span>'}</td><td class="no-print"><button class="btn btn-primary" style="padding:4px 10px;" onclick="editFile('${r.rrcms}')">Edit</button> <button class="btn btn-danger" style="padding:4px 10px;" onclick="deleteFile('${r.rrcms}')">Del</button></td></tr>`}).join('');}
-function editFile(rrcms){let f=registrations.find(r=>r.rrcms===rrcms);if(!f)return;currentEditIndex=registrations.findIndex(r=>r.rrcms===rrcms);document.getElementById('editRRCMS').value=f.rrcms;document.getElementById('editDate').value=f.regDate;document.getElementById('editStream').value=f.stream;document.getElementById('editYear').value=f.regYear;document.getElementById('editApplicant').value=f.applicant||'';document.getElementById('editVillage').value=f.village||'';document.getElementById('editModal').classList.add('active');}
-function saveEdit(){if(currentEditIndex<0)return;registrations[currentEditIndex].regDate=document.getElementById('editDate').value;registrations[currentEditIndex].stream=document.getElementById('editStream').value;registrations[currentEditIndex].regYear=parseInt(document.getElementById('editYear').value);registrations[currentEditIndex].applicant=document.getElementById('editApplicant').value;registrations[currentEditIndex].village=document.getElementById('editVillage').value;saveData();closeModal();showToast('Updated');refreshAll();}
-function closeModal(){document.getElementById('editModal').classList.remove('active');currentEditIndex=-1;}
-function deleteFile(rrcms){if(!confirm('Delete permanently?'))return;registrations=registrations.filter(r=>r.rrcms!==rrcms);disposals=disposals.filter(d=>d.rrcms!==rrcms);saveData();showToast('Deleted');refreshAll();}
-function updateDisposalDropdown(){let pending=registrations.filter(r=>!disposals.find(d=>d.rrcms===r.rrcms)),sel=document.getElementById('dispRRCMS');sel.innerHTML='<option value="">Select RRCMS</option>'+pending.map(r=>`<option value="${r.rrcms}">${r.rrcms} - ${r.stream}</option>`).join('');}
-function searchFilesToDispose(){let term=document.getElementById('disposeSearch').value.trim().toLowerCase(),resDiv=document.getElementById('searchResults');if(!term){resDiv.style.display='none';return;}let matches=registrations.filter(r=>r.rrcms.toLowerCase().includes(term)||r.stream.toLowerCase().includes(term)||r.regYear.toString().includes(term)).slice(0,20);if(!matches.length){resDiv.innerHTML='<div>No files</div>';resDiv.style.display='block';return;}resDiv.innerHTML=matches.map(r=>{let isDisposed=disposals.find(d=>d.rrcms===r.rrcms);return`<div style="padding:8px;border-bottom:1px solid #ccc;cursor:${isDisposed?'not-allowed':'pointer'};background:#fff" onclick="${!isDisposed?`selectFileForDisposal('${r.rrcms}')`:''}"><strong>${r.rrcms}</strong> | ${r.stream} | ${formatDate(r.regDate)} ${isDisposed?'(Disposed)':'<span style="color:green">(Pending)</span>'}</div>`}).join('');resDiv.style.display='block';}
-function selectFileForDisposal(rrcms){if(disposals.find(d=>d.rrcms===rrcms)){showToast('Already disposed','error');return;}document.getElementById('dispRRCMS').value=rrcms;loadFileDetails();document.getElementById('disposeSearch').value='';document.getElementById('searchResults').style.display='none';showToast(`Selected ${rrcms}`);}
-function clearDisposeSearch(){document.getElementById('disposeSearch').value='';document.getElementById('searchResults').style.display='none';}
-function loadFileDetails(){let rrcms=document.getElementById('dispRRCMS').value,f=registrations.find(r=>r.rrcms===rrcms);let div=document.getElementById('fileDetails');if(f){div.style.display='block';document.getElementById('fileDetailText').innerHTML=`RRCMS: ${f.rrcms} | Stream: ${f.stream} | Reg Date: ${formatDate(f.regDate)}`;}else div.style.display='none';}
-function disposeFile(){let rrcms=document.getElementById('dispRRCMS').value,date=document.getElementById('dispDate').value,type=document.getElementById('dispType').value,remarks=document.getElementById('dispRemarks').value.trim();if(!rrcms||!date||!type)return showToast('Fill required','error');let file=registrations.find(r=>r.rrcms===rrcms);if(!file||disposals.find(d=>d.rrcms===rrcms))return showToast('Invalid or already disposed','error');disposals.push({rrcms,stream:file.stream,regDate:file.regDate,disposalDate:date,disposalType:type,remarks});saveData();showToast('Disposed');document.getElementById('dispRRCMS').value='';document.getElementById('dispType').value='';document.getElementById('dispRemarks').value='';document.getElementById('fileDetails').style.display='none';refreshAll();}
-function renderDisposals(){let tbody=document.getElementById('disposalTableBody'),search=document.getElementById('dispSearch')?.value.toLowerCase()||'',filtered=disposals.filter(d=>search?d.rrcms.toLowerCase().includes(search)||d.stream.toLowerCase().includes(search):true);filtered.sort((a,b)=>new Date(b.disposalDate)-new Date(a.disposalDate));tbody.innerHTML=filtered.map((d,i)=>{let days=Math.ceil((new Date(d.disposalDate)-new Date(d.regDate))/(86400000));return`<tr><td>${i+1}</td><td><strong>${d.rrcms}</strong></td><td>${d.stream}</td><td>${formatDate(d.regDate)}</td><td>${formatDate(d.disposalDate)}</td><td><span class="badge badge-green">${d.disposalType}</span></td><td>${days} days</td><td>${d.remarks||'-'}</td><td><button class="btn btn-danger" onclick="undoDisposal('${d.rrcms}')">Undo</button></td></tr>`}).join('');}
-function undoDisposal(rrcms){if(!confirm('Undo disposal?'))return;disposals=disposals.filter(d=>d.rrcms!==rrcms);saveData();showToast('Undone');refreshAll();}
-function filterDisposals(){renderDisposals();}
-function filterRegistrations(){renderRegistrations();}
-function renderPending(){let pending=getPendingFiles(),stream=document.getElementById('pendingStreamFilter').value,year=document.getElementById('pendingYearFilter').value,age=document.getElementById('pendingAgeFilter').value,search=document.getElementById('pendingSearch').value.toLowerCase(),today=new Date();if(stream)pending=pending.filter(r=>r.stream===stream);if(year)pending=pending.filter(r=>r.regYear==year);if(search)pending=pending.filter(r=>r.rrcms.toLowerCase().includes(search));if(age){let [min,max]=age.split('-');if(max)pending=pending.filter(r=>{let days=Math.ceil((today-new Date(r.regDate))/86400000);return days>=+min&&days<+max;});else pending=pending.filter(r=>{let days=Math.ceil((today-new Date(r.regDate))/86400000);return days>=+min.replace('+','');});}
-pending.sort((a,b)=>new Date(a.regDate)-new Date(b.regDate));let tbody=document.getElementById('pendingTableBody');tbody.innerHTML=pending.map((r,i)=>{let days=Math.ceil((today-new Date(r.regDate))/86400000),ageCat=getAgeCategory(days);return`<tr><td>${i+1}</td><td><strong>${r.rrcms}</strong></td><td>${formatDate(r.regDate)}</td><td>${r.stream}</td><td>${r.regYear}</td><td>${days}</td><td><span class="badge ${ageCat.class}">${ageCat.label}</span></td><td>${r.applicant||'-'}</td><td>${r.village||'-'}</td></tr>`}).join('');if(!pending.length)tbody.innerHTML='<tr><td colspan="9">No pending files</td></tr>';}
-function updateFilters(){let streams=[...new Set(registrations.map(r=>r.stream))],years=[...new Set(registrations.map(r=>r.regYear))].sort((a,b)=>b-a);document.getElementById('pendingStreamFilter').innerHTML='<option value="">All Streams</option>'+streams.map(s=>`<option>${s}</option>`).join('');document.getElementById('pendingYearFilter').innerHTML='<option value="">All Years</option>'+years.map(y=>`<option>${y}</option>`).join('');}
-function filterPending(){renderPending();}
-function updateDashboard(){let today=new Date(),todayStr=today.toISOString().split('T')[0];document.getElementById('totalFiles').textContent=registrations.length;document.getElementById('disposedFiles').textContent=disposals.length;document.getElementById('pendingFiles').textContent=getPendingFiles().length;document.getElementById('pendingOver5Yrs').textContent=getPendingFiles().filter(r=>(today-new Date(r.regDate))/86400000>1825).length;document.getElementById('todayRegistered').textContent=registrations.filter(r=>r.regDate===todayStr).length;document.getElementById('todayDisposed').textContent=disposals.filter(d=>d.disposalDate===todayStr).length;updateLoadedCounts();let pending=getPendingFiles(),ageCounts={'Upto 6 Months':0,'6 Months - 1 Year':0,'1 - 2 Years':0,'2 - 3 Years':0,'3 - 5 Years':0,'5 - 10 Years':0,'10 - 20 Years':0,'20 - 30 Years':0,'30 - 40 Years':0,'More Than 40 Years':0};pending.forEach(r=>{let days=Math.ceil((today-new Date(r.regDate))/86400000),age=getAgeCategory(days);ageCounts[age.label]++;});let total=pending.length||1,ageBody=document.getElementById('ageAnalysisBody');ageBody.innerHTML=Object.entries(ageCounts).map(([l,c])=>`<tr><td>${l}</td><td><strong>${c}</strong></td><td>${((c/total)*100).toFixed(1)}%</td><td><div class="age-bar"><div class="age-fill" style="width:${(c/total)*100}%"></div></div></td></tr>`).join('');let streams=[...new Set(registrations.map(r=>r.stream))];document.getElementById('streamAnalysisBody').innerHTML=streams.map(s=>{let total=registrations.filter(r=>r.stream===s).length,disp=disposals.filter(d=>d.stream===s).length,pend=total-disp;return`<tr><td>${s}</td><td>${total}</td><td style="color:#e53e3e">${pend}</td><td>${disp}</td><td>${total?((pend/total)*100).toFixed(1):0}%</td></tr>`}).join('');let years=[...new Set(registrations.map(r=>r.regYear))].sort((a,b)=>b-a);document.getElementById('yearAnalysisBody').innerHTML=years.map(y=>{let total=registrations.filter(r=>r.regYear===y).length,disp=disposals.filter(d=>registrations.find(r=>r.rrcms===d.rrcms)?.regYear===y).length,pend=total-disp;return`<tr><td>${y}</td><td>${total}</td><td style="color:#e53e3e">${pend}</td><td>${disp}</td><td>${total?((pend/total)*100).toFixed(1):0}%</td></tr>`}).join('');}
-function generateMPR(){let from=new Date(document.getElementById('mprFromDate').value),to=new Date(document.getElementById('mprToDate').value);let initial=registrations.filter(r=>new Date(r.regDate)<from&&(!disposals.find(d=>d.rrcms===r.rrcms)||new Date(disposals.find(d=>d.rrcms===r.rrcms).disposalDate)>=from)).length;let newReg=registrations.filter(r=>new Date(r.regDate)>=from&&new Date(r.regDate)<=to).length;let decided=disposals.filter(d=>new Date(d.disposalDate)>=from&&new Date(d.disposalDate)<=to).length;let pendingAsOn=registrations.filter(r=>new Date(r.regDate)<=to&&(!disposals.find(d=>d.rrcms===r.rrcms)||new Date(disposals.find(d=>d.rrcms===r.rrcms).disposalDate)>to));let bk={0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0};pendingAsOn.forEach(r=>{let days=Math.ceil((to-new Date(r.regDate))/86400000);if(days<=180)bk[0]++;else if(days<=365)bk[1]++;else if(days<=730)bk[2]++;else if(days<=1095)bk[3]++;else if(days<=1825)bk[4]++;else if(days<=3650)bk[5]++;else if(days<=7300)bk[6]++;else if(days<=10950)bk[7]++;else if(days<=14600)bk[8]++;else bk[9]++;});document.getElementById('mprTableBody').innerHTML=`<tr><td>1</td><td style="text-align:left">Assistant Collector (Fastrack), Niwai</td><td>${initial}</td><td>${newReg}</td><td>${decided}</td><td><strong>${pendingAsOn.length}</strong></td><td>${bk[0]}</td><td>${bk[1]}</td><td>${bk[2]}</td><td>${bk[3]}</td><td>${bk[4]}</td><td>${bk[5]}</td><td>${bk[6]}</td><td>${bk[7]}</td><td>${bk[8]}</td><td>${bk[9]}</td></tr>`;}
-function exportMPRCSV(){let rows=document.querySelectorAll('#mprTableBody tr');if(!rows.length)return;let csv='S.No.,Office,Initial Pending,New Registered,Decided,Pending,<6M,6-12M,1-2Y,2-3Y,3-5Y,5-10Y,10-20Y,20-30Y,30-40Y,>40Y\n';rows.forEach(row=>{let vals=Array.from(row.querySelectorAll('td')).map(td=>td.innerText.trim());csv+=vals.join(',')+'\n';});downloadCSV(csv,'MPR_Report.csv');}
-function exportPendingCSV(){let pending=getPendingFiles(),today=new Date();let csv='S.No,RRCMS,Reg Date,Stream,Year,Pending Days,Age Category,Applicant,Village\n';pending.forEach((r,i)=>{let days=Math.ceil((today-new Date(r.regDate))/86400000),age=getAgeCategory(days);csv+=`${i+1},${r.rrcms},${r.regDate},${r.stream},${r.regYear},${days},${age.label},${r.applicant||''},${r.village||''}\n`;});downloadCSV(csv,'Pending_Files.csv');}
-function generateDharaWiseReport(){let streams=[...new Set(registrations.map(r=>r.stream))].sort();let tbody=document.getElementById('dharaWiseBody');tbody.innerHTML=streams.map(s=>{let total=registrations.filter(r=>r.stream===s).length,disp=disposals.filter(d=>d.stream===s).length,pend=total-disp;return`<tr><td>${s}</td><td>${total}</td><td>${disp}</td><td>${pend}</td><td>${total?((disp/total)*100).toFixed(1):0}%</td></tr>`}).join('');}
-function generateYearWiseReport(){let years=[...new Set(registrations.map(r=>r.regYear))].sort((a,b)=>b-a);let tbody=document.getElementById('yearWiseBody');tbody.innerHTML=years.map(y=>{let total=registrations.filter(r=>r.regYear===y).length,disp=disposals.filter(d=>registrations.find(r=>r.rrcms===d.rrcms)?.regYear===y).length,pend=total-disp;return`<tr><td>${y}</td><td>${total}</td><td>${disp}</td><td>${pend}</td><td>${total?((disp/total)*100).toFixed(1):0}%</td></tr>`}).join('');}
-function generateDisposalDateReport(){let from=document.getElementById('dispReportFrom').value,to=document.getElementById('dispReportTo').value;if(!from||!to){showToast('Select from/to dates','error');return;}let filtered=disposals.filter(d=>d.disposalDate>=from&&d.disposalDate<=to).sort((a,b)=>new Date(b.disposalDate)-new Date(a.disposalDate));let tbody=document.getElementById('disposalDateBody');if(!filtered.length){tbody.innerHTML='<tr><td colspan="7">No disposals in range.</td></tr>';return;}tbody.innerHTML=filtered.map((d,i)=>`<tr><td>${i+1}</td><td><strong>${d.rrcms}</strong></td><td>${d.stream}</td><td>${formatDate(d.regDate)}</td><td>${formatDate(d.disposalDate)}</td><td>${d.disposalType}</td><td>${d.remarks||'-'}</td></tr>`).join('');}
-function exportDharaWiseCSV(){let rows=document.querySelectorAll('#dharaWiseBody tr');let csv='Stream (Dhara),Total Registered,Disposed,Pending,Disposal %\n';rows.forEach(r=>{let td=r.querySelectorAll('td');csv+=`${td[0].innerText},${td[1].innerText},${td[2].innerText},${td[3].innerText},${td[4].innerText}\n`;});downloadCSV(csv,'Dhara_Wise_Report.csv');}
-function exportYearWiseCSV(){let rows=document.querySelectorAll('#yearWiseBody tr');let csv='Year,Total Registered,Disposed,Pending,Disposal %\n';rows.forEach(r=>{let td=r.querySelectorAll('td');csv+=`${td[0].innerText},${td[1].innerText},${td[2].innerText},${td[3].innerText},${td[4].innerText}\n`;});downloadCSV(csv,'Year_Wise_Report.csv');}
-function exportDisposalDateWiseCSV(){let rows=document.querySelectorAll('#disposalDateBody tr');if(rows.length===1&&rows[0].innerText.includes('No disposals')){showToast('No data to export','error');return;}let csv='S.No,RRCMS No,Stream,Registration Date,Disposal Date,Disposal Type,Remarks\n';rows.forEach((r,i)=>{let td=r.querySelectorAll('td');if(td.length>1)csv+=`${td[0].innerText},${td[1].innerText},${td[2].innerText},${td[3].innerText},${td[4].innerText},${td[5].innerText},${td[6].innerText}\n`;});downloadCSV(csv,'Disposal_Date_Range.csv');}
-function downloadCSV(csv,name){let blob=new Blob([csv],{type:'text/csv'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();}
-function handleTotalFilesUpload(e){let file=e.target.files[0];if(!file)return;let reader=new FileReader();reader.onload=ev=>{let lines=ev.target.result.split('\n'),cnt=0;lines.forEach(line=>{let parts=line.split(/[\t,]/).map(p=>p.trim());if(parts.length>=3){let rrcms=parts[1]||parts[0],regDate=parts[2]||parts[1],stream=parts[3]||parts[2],year=parts[4]||new Date(regDate).getFullYear();if(rrcms&&regDate&&!registrations.find(r=>r.rrcms===rrcms)){registrations.push({sno:registrations.length+1,rrcms,regDate:new Date(regDate).toISOString().split('T')[0],stream,regYear:parseInt(year),applicant:'',village:''});cnt++;}});saveData();showToast(`Imported ${cnt} files.`);refreshAll();};reader.readAsText(file);}
-function handleDisposalUpload(e){let file=e.target.files[0];if(!file)return;let reader=new FileReader();reader.onload=ev=>{let lines=ev.target.result.split('\n'),cnt=0;lines.forEach(line=>{let parts=line.split(/[\t,]/).map(p=>p.trim());let rrcms=parts[0],dispDate=parts[parts.length-1];let reg=registrations.find(r=>r.rrcms===rrcms);if(reg&&!disposals.find(d=>d.rrcms===rrcms)&&dispDate){disposals.push({rrcms,stream:reg.stream,regDate:reg.regDate,disposalDate:new Date(dispDate).toISOString().split('T')[0],disposalType:'Decided',remarks:'Imported'});cnt++;}});saveData();showToast(`Imported ${cnt} disposals.`);refreshAll();};reader.readAsText(file);}
-function clearAllData(){if(confirm('Delete ALL data?')){registrations=[];disposals=[];saveData();showToast('All cleared');refreshAll();}}
-function exportAllData(){let data={registrations,disposals,exported:new Date().toISOString()};let blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});let a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`RCCMS_backup_${new Date().toISOString().split('T')[0]}.json`;a.click();}
+
+function updateLoadedCounts() {
+    document.getElementById('loadedReg').textContent = registrations.length;
+    document.getElementById('loadedDisp').textContent = disposals.length;
+    document.getElementById('loadedPending').textContent = getPendingFiles().length;
+}
+
+function showTab(tabId) {
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    event.target.classList.add('active');
+    refreshAll();
+}
+
+function saveData() {
+    localStorage.setItem('rccms_registrations', JSON.stringify(registrations));
+    localStorage.setItem('rccms_disposals', JSON.stringify(disposals));
+}
+
+function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+// ===================== REGISTRATION =====================
+function registerFile() {
+    const rrcms = document.getElementById('regRRCMS').value.trim();
+    const date = document.getElementById('regDate').value;
+    const stream = document.getElementById('regStream').value.trim();
+    const year = document.getElementById('regYear').value;
+    const applicant = document.getElementById('regApplicant').value.trim();
+    const village = document.getElementById('regVillage').value.trim();
+
+    if (!rrcms || !date || !stream || !year) {
+        showToast('Please fill all required fields!', 'error');
+        return;
+    }
+
+    if (registrations.find(r => r.rrcms === rrcms)) {
+        showToast('RRCMS Number already exists!', 'error');
+        return;
+    }
+
+    registrations.push({
+        sno: registrations.length + 1,
+        rrcms: rrcms,
+        regDate: date,
+        stream: stream,
+        regYear: parseInt(year),
+        applicant: applicant,
+        village: village,
+        registeredOn: new Date().toISOString()
+    });
+
+    saveData();
+    showToast('File registered successfully!');
+
+    document.getElementById('regRRCMS').value = '';
+    document.getElementById('regStream').value = '';
+    document.getElementById('regYear').value = '';
+    document.getElementById('regApplicant').value = '';
+    document.getElementById('regVillage').value = '';
+
+    refreshAll();
+}
+
+function renderRegistrations() {
+    const tbody = document.getElementById('registrationTableBody');
+    const search = document.getElementById('regSearch')?.value.toLowerCase() || '';
+
+    let filtered = registrations;
+    if (search) {
+        filtered = registrations.filter(r => 
+            r.rrcms.toLowerCase().includes(search) ||
+            r.stream.toLowerCase().includes(search) ||
+            (r.applicant && r.applicant.toLowerCase().includes(search))
+        );
+    }
+
+    filtered = [...filtered].sort((a, b) => new Date(b.regDate) - new Date(a.regDate));
+
+    tbody.innerHTML = filtered.map((r, i) => {
+        const isDisposed = disposals.find(d => d.rrcms === r.rrcms);
+        return `<tr>
+            <td>${i + 1}</td>
+            <td><strong>${r.rrcms}</strong></td>
+            <td>${formatDate(r.regDate)}</td>
+            <td><span class="stream-tag" style="background:${getStreamColor(r.stream)}20;color:${getStreamColor(r.stream)}">${r.stream}</span></td>
+            <td>${r.regYear}</td>
+            <td>${r.applicant || '-'}</td>
+            <td>${r.village || '-'}</td>
+            <td>${isDisposed ? '<span class="badge badge-green">Disposed</span>' : '<span class="badge badge-orange">Pending</span>'}</td>
+            <td class="no-print">
+                <button class="btn btn-primary" style="padding:4px 10px;font-size:0.8rem;" onclick="editFile('${r.rrcms}')">Edit</button>
+                <button class="btn btn-danger" style="padding:4px 10px;font-size:0.8rem;" onclick="deleteFile('${r.rrcms}')">Delete</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function filterRegistrations() {
+    renderRegistrations();
+}
+
+// ===================== DISPOSAL =====================
+function updateDisposalDropdown() {
+    const select = document.getElementById('dispRRCMS');
+    const pending = registrations.filter(r => !disposals.find(d => d.rrcms === r.rrcms));
+    select.innerHTML = '<option value="">Select RRCMS Number</option>' + 
+        pending.map(r => `<option value="${r.rrcms}">${r.rrcms} - ${r.stream}</option>`).join('');
+}
+
+// ===================== SEARCH FILES TO DISPOSE =====================
+function searchFilesToDispose() {
+    const searchTerm = document.getElementById('disposeSearch').value.trim().toLowerCase();
+    const resultsDiv = document.getElementById('searchResults');
+
+    if (!searchTerm) {
+        resultsDiv.style.display = 'none';
+        resultsDiv.innerHTML = '';
+        return;
+    }
+
+    // Search in ALL registered files (both pending and disposed)
+    const matchedFiles = registrations.filter(r => {
+        const isDisposed = disposals.find(d => d.rrcms === r.rrcms);
+        return (
+            r.rrcms.toLowerCase().includes(searchTerm) ||
+            r.stream.toLowerCase().includes(searchTerm) ||
+            r.regYear.toString().includes(searchTerm) ||
+            (r.applicant && r.applicant.toLowerCase().includes(searchTerm)) ||
+            (r.village && r.village.toLowerCase().includes(searchTerm))
+        );
+    }).slice(0, 20); // Show max 20 results
+
+    if (matchedFiles.length === 0) {
+        resultsDiv.innerHTML = '<div class="no-results">❌ No files found matching your search</div>';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+
+    resultsDiv.innerHTML = matchedFiles.map(r => {
+        const isDisposed = disposals.find(d => d.rrcms === r.rrcms);
+        const statusClass = isDisposed ? 'status-disposed' : 'status-pending';
+        const statusText = isDisposed ? '✅ Disposed' : '⏳ Pending';
+        const clickAction = isDisposed ? '' : `onclick="selectFileForDisposal('${r.rrcms}')"`;
+        const cursorStyle = isDisposed ? 'cursor: not-allowed; opacity: 0.6;' : 'cursor: pointer;';
+        const highlightRRCMS = highlightText(r.rrcms, searchTerm);
+        const highlightStream = highlightText(r.stream, searchTerm);
+
+        return `<div class="search-result-item ${isDisposed ? '' : ''}" ${clickAction} style="${cursorStyle}">
+            <div>
+                <div class="rrcms-num">${highlightRRCMS}</div>
+                <div class="file-info">
+                    Stream: ${highlightStream} | Reg Date: ${formatDate(r.regDate)} | Year: ${r.regYear}
+                    ${r.applicant ? '| Applicant: ' + r.applicant : ''}
+                    ${r.village ? '| Village: ' + r.village : ''}
+                </div>
+            </div>
+            <span class="status-badge ${statusClass}">${statusText}</span>
+        </div>`;
+    }).join('');
+
+    resultsDiv.style.display = 'block';
+}
+
+function highlightText(text, searchTerm) {
+    if (!searchTerm) return text;
+    const regex = new RegExp(`(${searchTerm})`, 'gi');
+    return text.replace(regex, '<span class="highlight">$1</span>');
+}
+
+function selectFileForDisposal(rrcms) {
+    const file = registrations.find(r => r.rrcms === rrcms);
+    if (!file) return;
+
+    // Check if already disposed
+    if (disposals.find(d => d.rrcms === rrcms)) {
+        showToast('This file is already disposed!', 'error');
+        return;
+    }
+
+    // Set the dropdown value
+    const select = document.getElementById('dispRRCMS');
+    select.value = rrcms;
+
+    // Trigger the onchange event
+    loadFileDetails();
+
+    // Clear search results
+    document.getElementById('disposeSearch').value = '';
+    document.getElementById('searchResults').style.display = 'none';
+
+    // Show success message
+    showToast(`File ${rrcms} selected for disposal`);
+
+    // Scroll to disposal form
+    document.getElementById('fileDetails').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function clearDisposeSearch() {
+    document.getElementById('disposeSearch').value = '';
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('searchResults').innerHTML = '';
+}
+
+function loadFileDetails() {
+    const rrcms = document.getElementById('dispRRCMS').value;
+    const file = registrations.find(r => r.rrcms === rrcms);
+    const detailsDiv = document.getElementById('fileDetails');
+    if (file) {
+        detailsDiv.style.display = 'block';
+        document.getElementById('fileDetailText').innerHTML = 
+            `RRCMS: <strong>${file.rrcms}</strong> | Stream: <strong>${file.stream}</strong> | Reg Date: <strong>${formatDate(file.regDate)}</strong> | Reg Year: <strong>${file.regYear}</strong>`;
+    } else {
+        detailsDiv.style.display = 'none';
+    }
+}
+
+function disposeFile() {
+    const rrcms = document.getElementById('dispRRCMS').value;
+    const date = document.getElementById('dispDate').value;
+    const type = document.getElementById('dispType').value;
+    const remarks = document.getElementById('dispRemarks').value.trim();
+
+    if (!rrcms || !date || !type) {
+        showToast('Please fill all required fields!', 'error');
+        return;
+    }
+
+    const file = registrations.find(r => r.rrcms === rrcms);
+    if (!file) {
+        showToast('File not found!', 'error');
+        return;
+    }
+
+    if (disposals.find(d => d.rrcms === rrcms)) {
+        showToast('File already disposed!', 'error');
+        return;
+    }
+
+    disposals.push({
+        rrcms: rrcms,
+        stream: file.stream,
+        regDate: file.regDate,
+        disposalDate: date,
+        disposalType: type,
+        remarks: remarks,
+        disposedOn: new Date().toISOString()
+    });
+
+    saveData();
+    showToast('File disposed successfully!');
+
+    document.getElementById('dispRRCMS').value = '';
+    document.getElementById('dispType').value = '';
+    document.getElementById('dispRemarks').value = '';
+    document.getElementById('fileDetails').style.display = 'none';
+
+    refreshAll();
+}
+
+function renderDisposals() {
+    const tbody = document.getElementById('disposalTableBody');
+    const search = document.getElementById('dispSearch')?.value.toLowerCase() || '';
+
+    let filtered = disposals;
+    if (search) {
+        filtered = disposals.filter(d => 
+            d.rrcms.toLowerCase().includes(search) ||
+            d.stream.toLowerCase().includes(search)
+        );
+    }
+
+    filtered = [...filtered].sort((a, b) => new Date(b.disposalDate) - new Date(a.disposalDate));
+
+    tbody.innerHTML = filtered.map((d, i) => {
+        const pendingDays = Math.ceil((new Date(d.disposalDate) - new Date(d.regDate)) / (1000 * 60 * 60 * 24));
+        return `<tr>
+            <td>${i + 1}</td>
+            <td><strong>${d.rrcms}</strong></td>
+            <td><span class="stream-tag" style="background:${getStreamColor(d.stream)}20;color:${getStreamColor(d.stream)}">${d.stream}</span></td>
+            <td>${formatDate(d.regDate)}</td>
+            <td>${formatDate(d.disposalDate)}</td>
+            <td><span class="badge badge-green">${d.disposalType}</span></td>
+            <td>${pendingDays} days</td>
+            <td>${d.remarks || '-'}</td>
+            <td class="no-print">
+                <button class="btn btn-danger" style="padding:4px 10px;font-size:0.8rem;" onclick="undoDisposal('${d.rrcms}')">Undo</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function undoDisposal(rrcms) {
+    if (!confirm('Are you sure you want to undo this disposal?')) return;
+    disposals = disposals.filter(d => d.rrcms !== rrcms);
+    saveData();
+    showToast('Disposal undone successfully!');
+    refreshAll();
+}
+
+function filterDisposals() {
+    renderDisposals();
+}
+
+// ===================== PENDING FILES =====================
+function getAgeCategory(days) {
+    if (days <= 180) return { label: 'Upto 6 Months', class: 'badge-green' };
+    if (days <= 365) return { label: '6 Months - 1 Year', class: 'badge-yellow' };
+    if (days <= 730) return { label: '1 - 2 Years', class: 'badge-orange' };
+    if (days <= 1095) return { label: '2 - 3 Years', class: 'badge-orange' };
+    if (days <= 1825) return { label: '3 - 5 Years', class: 'badge-red' };
+    if (days <= 3650) return { label: '5 - 10 Years', class: 'badge-red' };
+    if (days <= 7300) return { label: '10 - 20 Years', class: 'badge-purple' };
+    if (days <= 10950) return { label: '20 - 30 Years', class: 'badge-purple' };
+    if (days <= 14600) return { label: '30 - 40 Years', class: 'badge-gray' };
+    return { label: 'More Than 40 Years', class: 'badge-gray' };
+}
+
+function getPendingFiles() {
+    return registrations.filter(r => !disposals.find(d => d.rrcms === r.rrcms));
+}
+
+function renderPending() {
+    const tbody = document.getElementById('pendingTableBody');
+    const streamFilter = document.getElementById('pendingStreamFilter')?.value || '';
+    const yearFilter = document.getElementById('pendingYearFilter')?.value || '';
+    const ageFilter = document.getElementById('pendingAgeFilter')?.value || '';
+    const search = document.getElementById('pendingSearch')?.value.toLowerCase() || '';
+
+    let pending = getPendingFiles();
+    const today = new Date();
+
+    if (streamFilter) pending = pending.filter(r => r.stream === streamFilter);
+    if (yearFilter) pending = pending.filter(r => r.regYear == yearFilter);
+    if (search) pending = pending.filter(r => r.rrcms.toLowerCase().includes(search));
+
+    if (ageFilter) {
+        pending = pending.filter(r => {
+            const days = Math.ceil((today - new Date(r.regDate)) / (1000 * 60 * 60 * 24));
+            const [min, max] = ageFilter.split('-');
+            if (max) return days >= parseInt(min) && days < parseInt(max);
+            return days >= parseInt(min.replace('+', ''));
+        });
+    }
+
+    pending.sort((a, b) => new Date(a.regDate) - new Date(b.regDate));
+
+    tbody.innerHTML = pending.map((r, i) => {
+        const days = Math.ceil((today - new Date(r.regDate)) / (1000 * 60 * 60 * 24));
+        const age = getAgeCategory(days);
+        return `<tr>
+            <td>${i + 1}</td>
+            <td><strong>${r.rrcms}</strong></td>
+            <td>${formatDate(r.regDate)}</td>
+            <td><span class="stream-tag" style="background:${getStreamColor(r.stream)}20;color:${getStreamColor(r.stream)}">${r.stream}</span></td>
+            <td>${r.regYear}</td>
+            <td>${days}</td>
+            <td><span class="badge ${age.class}">${age.label}</span></td>
+            <td>${r.applicant || '-'}</td>
+            <td>${r.village || '-'}</td>
+        </tr>`;
+    }).join('');
+
+    if (pending.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" class="empty-state">No pending files found</td></tr>`;
+    }
+}
+
+function filterPending() {
+    renderPending();
+}
+
+function updateFilters() {
+    const streams = [...new Set(registrations.map(r => r.stream))].sort();
+    const years = [...new Set(registrations.map(r => r.regYear))].sort((a, b) => b - a);
+
+    const streamSelect = document.getElementById('pendingStreamFilter');
+    if (streamSelect) {
+        streamSelect.innerHTML = '<option value="">All Streams</option>' + 
+            streams.map(s => `<option value="${s}">${s}</option>`).join('');
+    }
+
+    const yearSelect = document.getElementById('pendingYearFilter');
+    if (yearSelect) {
+        yearSelect.innerHTML = '<option value="">All Years</option>' + 
+            years.map(y => `<option value="${y}">${y}</option>`).join('');
+    }
+}
+
+function exportPendingCSV() {
+    const pending = getPendingFiles();
+    const today = new Date();
+
+    let csv = 'S.No.,RRCMS No.,Reg Date,Stream (Dhara),Reg Year,Pending Days,Age Category,Applicant,Village\n';
+    pending.forEach((r, i) => {
+        const days = Math.ceil((today - new Date(r.regDate)) / (1000 * 60 * 60 * 24));
+        const age = getAgeCategory(days);
+        csv += `${i+1},${r.rrcms},${r.regDate},${r.stream},${r.regYear},${days},"${age.label}","${r.applicant || ''}","${r.village || ''}"\n`;
+    });
+
+    downloadCSV(csv, 'Pending_Files_Report.csv');
+    showToast('Pending files exported successfully!');
+}
+
+// ===================== MPR REPORT =====================
+function generateMPR() {
+    const fromDate = new Date(document.getElementById('mprFromDate').value);
+    const toDate = new Date(document.getElementById('mprToDate').value);
+
+    if (!fromDate || !toDate) {
+        showToast('Please select both From and To dates!', 'error');
+        return;
+    }
+
+    const officeName = "Assistant Collector (Fastrack), Niwai";
+
+    const initialPending = registrations.filter(r => {
+        const regDate = new Date(r.regDate);
+        if (regDate >= fromDate) return false;
+        const disp = disposals.find(d => d.rrcms === r.rrcms);
+        if (!disp) return true;
+        return new Date(disp.disposalDate) >= fromDate;
+    }).length;
+
+    const newRegistered = registrations.filter(r => {
+        const regDate = new Date(r.regDate);
+        return regDate >= fromDate && regDate <= toDate;
+    }).length;
+
+    const totalDecided = disposals.filter(d => {
+        const dispDate = new Date(d.disposalDate);
+        return dispDate >= fromDate && dispDate <= toDate;
+    }).length;
+
+    const pendingAsOn = registrations.filter(r => {
+        const regDate = new Date(r.regDate);
+        if (regDate > toDate) return false;
+        const disp = disposals.find(d => d.rrcms === r.rrcms);
+        if (!disp) return true;
+        return new Date(disp.disposalDate) > toDate;
+    });
+
+    const ageBreakup = { '0-6': 0, '6-12': 0, '12-24': 0, '24-36': 0, '36-60': 0, '60-120': 0, '120-240': 0, '240-360': 0, '360-480': 0, '480+': 0 };
+
+    pendingAsOn.forEach(r => {
+        const days = Math.ceil((toDate - new Date(r.regDate)) / (1000 * 60 * 60 * 24));
+        if (days <= 180) ageBreakup['0-6']++;
+        else if (days <= 365) ageBreakup['6-12']++;
+        else if (days <= 730) ageBreakup['12-24']++;
+        else if (days <= 1095) ageBreakup['24-36']++;
+        else if (days <= 1825) ageBreakup['36-60']++;
+        else if (days <= 3650) ageBreakup['60-120']++;
+        else if (days <= 7300) ageBreakup['120-240']++;
+        else if (days <= 10950) ageBreakup['240-360']++;
+        else if (days <= 14600) ageBreakup['360-480']++;
+        else ageBreakup['480+']++;
+    });
+
+    const tbody = document.getElementById('mprTableBody');
+    tbody.innerHTML = `<tr>
+        <td>1</td>
+        <td style="text-align:left;font-weight:600;">${officeName}</td>
+        <td>${initialPending}</td>
+        <td>${newRegistered}</td>
+        <td>${totalDecided}</td>
+        <td style="font-weight:700;color:#e53e3e;">${pendingAsOn.length}</td>
+        <td>${ageBreakup['0-6']}</td>
+        <td>${ageBreakup['6-12']}</td>
+        <td>${ageBreakup['12-24']}</td>
+        <td>${ageBreakup['24-36']}</td>
+        <td>${ageBreakup['36-60']}</td>
+        <td>${ageBreakup['60-120']}</td>
+        <td>${ageBreakup['120-240']}</td>
+        <td>${ageBreakup['240-360']}</td>
+        <td>${ageBreakup['360-480']}</td>
+        <td>${ageBreakup['480+']}</td>
+    </tr>`;
+
+    showToast('MPR Report generated successfully!');
+}
+
+function exportMPRCSV() {
+    const tbody = document.getElementById('mprTableBody');
+    if (!tbody.innerHTML.trim()) {
+        showToast('Please generate MPR first!', 'error');
+        return;
+    }
+
+    const fromDate = document.getElementById('mprFromDate').value;
+    const toDate = document.getElementById('mprToDate').value;
+
+    let csv = `MPR Report - ${fromDate} to ${toDate}\n\n`;
+    csv += 'S.No.,Office Name,Initial Pending,New Registered,Total Decided,Pending As On Date,Upto 6 Months,6 Months To 1 year,1 To 2 Years,2 To 3 Years,3 To 5 Years,5 To 10 Years,10 To 20 Years,20 To 30 Years,30 To 40 Years,More Than 40 Years\n';
+
+    const rows = tbody.querySelectorAll('tr');
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        const values = Array.from(cells).map(c => c.textContent.trim());
+        csv += values.join(',') + '\n';
+    });
+
+    downloadCSV(csv, `MPR_Report_${fromDate}_to_${toDate}.csv`);
+    showToast('MPR exported successfully!');
+}
+
+// ===================== DASHBOARD =====================
+function updateDashboard() {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    document.getElementById('totalFiles').textContent = registrations.length;
+    document.getElementById('disposedFiles').textContent = disposals.length;
+    document.getElementById('pendingFiles').textContent = getPendingFiles().length;
+
+    const pendingOver5 = getPendingFiles().filter(r => {
+        const days = Math.ceil((today - new Date(r.regDate)) / (1000 * 60 * 60 * 24));
+        return days > 1825;
+    }).length;
+    document.getElementById('pendingOver5Yrs').textContent = pendingOver5;
+
+    const todayReg = registrations.filter(r => r.regDate === todayStr).length;
+    document.getElementById('todayRegistered').textContent = todayReg;
+
+    const todayDisp = disposals.filter(d => d.disposalDate === todayStr).length;
+    document.getElementById('todayDisposed').textContent = todayDisp;
+
+    updateLoadedCounts();
+
+    // Age analysis
+    const pending = getPendingFiles();
+    const ageCounts = { 'Upto 6 Months': 0, '6 Months - 1 Year': 0, '1 - 2 Years': 0, '2 - 3 Years': 0, '3 - 5 Years': 0, '5 - 10 Years': 0, '10 - 20 Years': 0, '20 - 30 Years': 0, '30 - 40 Years': 0, 'More Than 40 Years': 0 };
+    const ageColors = ['#48bb78', '#ecc94b', '#ed8936', '#ed8936', '#e53e3e', '#e53e3e', '#805ad5', '#805ad5', '#718096', '#718096'];
+
+    pending.forEach(r => {
+        const days = Math.ceil((today - new Date(r.regDate)) / (1000 * 60 * 60 * 24));
+        const age = getAgeCategory(days);
+        ageCounts[age.label]++;
+    });
+
+    const totalPending = pending.length || 1;
+    const ageBody = document.getElementById('ageAnalysisBody');
+    ageBody.innerHTML = Object.entries(ageCounts).map(([label, count], i) => {
+        const pct = ((count / totalPending) * 100).toFixed(1);
+        return `<tr>
+            <td>${label}</td>
+            <td style="font-weight:700;">${count}</td>
+            <td>${pct}%</td>
+            <td style="width:200px;"><div class="age-bar"><div class="age-fill" style="width:${pct}%;background:${ageColors[i]}"></div></div></td>
+        </tr>`;
+    }).join('');
+
+    // Stream analysis
+    const streams = [...new Set(registrations.map(r => r.stream))];
+    const streamBody = document.getElementById('streamAnalysisBody');
+    streamBody.innerHTML = streams.map(stream => {
+        const total = registrations.filter(r => r.stream === stream).length;
+        const disp = disposals.filter(d => d.stream === stream).length;
+        const pend = total - disp;
+        const pct = total > 0 ? ((pend / total) * 100).toFixed(1) : 0;
+        return `<tr>
+            <td><span class="stream-tag" style="background:${getStreamColor(stream)}20;color:${getStreamColor(stream)}">${stream}</span></td>
+            <td>${total}</td>
+            <td style="color:#e53e3e;font-weight:600;">${pend}</td>
+            <td style="color:#48bb78;font-weight:600;">${disp}</td>
+            <td>${pct}%</td>
+        </tr>`;
+    }).join('');
+
+    // Year analysis
+    const years = [...new Set(registrations.map(r => r.regYear))].sort((a, b) => b - a);
+    const yearBody = document.getElementById('yearAnalysisBody');
+    yearBody.innerHTML = years.map(year => {
+        const total = registrations.filter(r => r.regYear === year).length;
+        const disp = disposals.filter(d => {
+            const reg = registrations.find(r => r.rrcms === d.rrcms);
+            return reg && reg.regYear === year;
+        }).length;
+        const pend = total - disp;
+        const pct = total > 0 ? ((pend / total) * 100).toFixed(1) : 0;
+        return `<tr>
+            <td style="font-weight:600;">${year}</td>
+            <td>${total}</td>
+            <td style="color:#e53e3e;font-weight:600;">${pend}</td>
+            <td style="color:#48bb78;font-weight:600;">${disp}</td>
+            <td>${pct}%</td>
+        </tr>`;
+    }).join('');
+}
+
+// ===================== IMPORT / EXPORT =====================
+function handleTotalFilesUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const lines = e.target.result.split('\n');
+        let imported = 0;
+
+        lines.forEach((line, idx) => {
+            if (idx === 0 && (line.includes('S.No') || line.includes('RRCMS'))) return;
+            const parts = line.split(/[\t,]/).map(p => p.trim());
+            if (parts.length >= 4) {
+                const rrcms = parts[1] || parts[0];
+                const regDate = parts[2] || parts[1];
+                const stream = parts[3] || parts[2];
+                const year = parts[4] || new Date(regDate).getFullYear();
+
+                if (rrcms && regDate && !registrations.find(r => r.rrcms === rrcms)) {
+                    try {
+                        const dateObj = new Date(regDate);
+                        const isoDate = dateObj.toISOString().split('T')[0];
+                        registrations.push({
+                            sno: registrations.length + 1,
+                            rrcms: rrcms,
+                            regDate: isoDate,
+                            stream: stream,
+                            regYear: parseInt(year) || new Date().getFullYear(),
+                            applicant: '',
+                            village: '',
+                            registeredOn: new Date().toISOString()
+                        });
+                        imported++;
+                    } catch(e) {}
+                }
+            }
+        });
+
+        saveData();
+        showToast(`Imported ${imported} files from Total Files data!`);
+        refreshAll();
+    };
+    reader.readAsText(file);
+}
+
+function handleDisposalUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const lines = e.target.result.split('\n');
+        let imported = 0;
+
+        lines.forEach((line, idx) => {
+            if (idx === 0 && (line.includes('RRCMS') || line.includes('Stream'))) return;
+            const parts = line.split(/[\t,]/).map(p => p.trim());
+            if (parts.length >= 2) {
+                const rrcms = parts[0];
+                const dispDate = parts[parts.length - 1];
+
+                const reg = registrations.find(r => r.rrcms === rrcms);
+                if (reg && !disposals.find(d => d.rrcms === rrcms)) {
+                    try {
+                        const dateObj = new Date(dispDate);
+                        const isoDate = dateObj.toISOString().split('T')[0];
+                        disposals.push({
+                            rrcms: rrcms,
+                            stream: reg.stream,
+                            regDate: reg.regDate,
+                            disposalDate: isoDate,
+                            disposalType: 'Decided',
+                            remarks: 'Imported from file',
+                            disposedOn: new Date().toISOString()
+                        });
+                        imported++;
+                    } catch(e) {}
+                }
+            }
+        });
+
+        saveData();
+        showToast(`Imported ${imported} disposals!`);
+        refreshAll();
+    };
+    reader.readAsText(file);
+}
+
+function clearAllData() {
+    if (!confirm('⚠️ WARNING: This will delete ALL data. Are you sure?')) return;
+    registrations = [];
+    disposals = [];
+    saveData();
+    showToast('All data cleared!');
+    refreshAll();
+}
+
+function exportAllData() {
+    const data = { registrations: registrations, disposals: disposals, exportedOn: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `RCCMS_Backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    showToast('Backup exported successfully!');
+}
+
+// ===================== EDIT / DELETE =====================
+function editFile(rrcms) {
+    const file = registrations.find(r => r.rrcms === rrcms);
+    if (!file) return;
+
+    currentEditIndex = registrations.findIndex(r => r.rrcms === rrcms);
+    document.getElementById('editRRCMS').value = file.rrcms;
+    document.getElementById('editDate').value = file.regDate;
+    document.getElementById('editStream').value = file.stream;
+    document.getElementById('editYear').value = file.regYear;
+    document.getElementById('editApplicant').value = file.applicant || '';
+    document.getElementById('editVillage').value = file.village || '';
+
+    document.getElementById('editModal').classList.add('active');
+}
+
+function saveEdit() {
+    if (currentEditIndex < 0) return;
+
+    registrations[currentEditIndex].regDate = document.getElementById('editDate').value;
+    registrations[currentEditIndex].stream = document.getElementById('editStream').value;
+    registrations[currentEditIndex].regYear = parseInt(document.getElementById('editYear').value);
+    registrations[currentEditIndex].applicant = document.getElementById('editApplicant').value;
+    registrations[currentEditIndex].village = document.getElementById('editVillage').value;
+
+    saveData();
+    closeModal();
+    showToast('File updated successfully!');
+    refreshAll();
+}
+
+function closeModal() {
+    document.getElementById('editModal').classList.remove('active');
+    currentEditIndex = -1;
+}
+
+function deleteFile(rrcms) {
+    if (!confirm('Are you sure you want to delete this file?')) return;
+    registrations = registrations.filter(r => r.rrcms !== rrcms);
+    disposals = disposals.filter(d => d.rrcms !== rrcms);
+    saveData();
+    showToast('File deleted successfully!');
+    refreshAll();
+}
+
+// ===================== UTILITIES =====================
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    if (isNaN(d)) return dateStr;
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function getStreamColor(stream) {
+    const colors = { 
+        '188,53': '#3182ce', 
+        '212(02)': '#38a169', 
+        '188,88': '#d69e2e', 
+        '88': '#e53e3e', 
+        '188': '#805ad5', 
+        '136,188,88': '#dd6b20', 
+        '39(2)': '#38b2ac', 
+        'General': '#718096' 
+    };
+    return colors[stream] || '#718096';
+}
+
+function downloadCSV(csv, filename) {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+}
+
+function refreshAll() {
+    updateDashboard();
+    renderRegistrations();
+    updateDisposalDropdown();
+    renderDisposals();
+    updateFilters();
+    renderPending();
+}
